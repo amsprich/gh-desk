@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Desktop Clone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .fira-code {
+            font-family: 'Fira Code', monospace;
+        }
+        /* Style for the resizer handle */
+        .resizer {
+            background-color: transparent;
+            width: 5px;
+            cursor: col-resize;
+            flex-shrink: 0;
+            transition: background-color 0.2s ease;
+        }
+        .resizer:hover {
+            background-color: #4f8de4; /* A blue color to indicate interactivity */
+        }
+        /* Prevent text selection while dragging */
+        .is-resizing {
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <!-- Main Window Container -->
+    <div class="w-full max-w-7xl h-[800px] bg-[#2d333b] shadow-2xl flex flex-col overflow-hidden border border-gray-700 relative">
+
+        <!-- Main Content -->
+        <div id="main-container" class="flex flex-1 overflow-hidden">
+
+            <!-- Sidebar -->
+            <aside id="sidebar" class="bg-[#22272e] flex flex-col text-sm" style="width: 25%;">
+                
+                <!-- Tabs -->
+                <div class="flex-shrink-0 border-b border-gray-700">
+                    <div class="flex w-full min-h-[57px]">
+                        <button id="changes-tab" class="w-1/2 text-center text-white font-semibold py-3 border-b-2 border-blue-500 bg-[#2d333b] rounded-t-md">Changes <span id="changes-count" class="bg-blue-500 text-white text-xs font-bold rounded-full px-2 py-0.5 ml-1">2</span></button>
+                        <button id="history-tab" class="w-1/2 text-center text-gray-400 font-semibold py-3 border-b border-gray-700">History</button>
+                    </div>
+                </div>
+
+                <!-- Changes View (Sidebar) -->
+                <div id="changes-view-sidebar" class="flex-1 flex flex-col">
+                    <div class="p-4 overflow-y-auto">
+                        <div class="flex flex-col mb-2">
+                            <input type="text" placeholder="Filter changed files" class="bg-[#2d333b] text-white text-sm border border-gray-600 rounded px-3 py-1.5 w-full mb-2 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                             <div class="flex items-center text-gray-300">
+                                <input type="checkbox" class="form-checkbox h-4 w-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500">
+                                <span class="ml-2 font-semibold">0 changed files</span>
+                            </div>
+                        </div>
+                        <ul id="changed-files-list">
+                            <!-- Files will be populated by JavaScript -->
+                        </ul>
+                    </div>
+                     <!-- Commit Area -->
+                    <div class="flex-shrink-0 p-4 mt-auto border-t border-gray-700">
+                        <input type="text" placeholder="Summary (required)" class="bg-[#2d333b] text-white w-full border border-gray-600 rounded p-2 mb-2 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <textarea placeholder="Description" class="bg-[#2d333b] text-white w-full border border-gray-600 rounded p-2 h-24 resize-none mb-2 focus:outline-none focus:ring-1 focus:ring-blue-500"></textarea>
+                        <!-- Alpine.js Test -->
+                        <div x-data="{ testMessage: 'Alpine is working!', clickCount: 0 }" class="mb-2 p-2 bg-green-900/20 rounded border border-green-600">
+                            <p class="text-green-400 text-xs mb-1" x-text="testMessage"></p>
+                            <button @click="clickCount++" class="text-green-400 hover:text-green-300 text-xs">
+                                Test clicks: <span x-text="clickCount"></span>
+                            </button>
+                        </div>
+                        
+                        <div class="flex items-stretch justify-between">
+                            <button class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md flex-grow text-xs">
+                                Commit 0 files to <span class="font-mono">main</span>
+                            </button>
+                            <button class="text-gray-400 hover:text-white text-xs p-2 rounded-md ml-2 border border-gray-600 bg-[#2d333b]">A+</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History View (Sidebar) -->
+                <div id="history-view-sidebar" class="flex-1 overflow-y-auto hidden">
+                    <ul>
+                        <!-- Commit history will be populated by JavaScript -->
+                    </ul>
+                </div>
+            </aside>
+
+            <!-- Resizer for Main View -->
+            <div id="main-resizer" class="resizer border-r border-l border-gray-700"></div>
+
+            <!-- Main Content: Code Diff -->
+            <main id="main-content" class="flex-1 flex flex-col bg-[#22272e]">
+                <!-- Top Bar -->
+                <div class="flex-shrink-0 flex items-center justify-between p-3 border-b border-gray-700 text-sm">
+                    <div class="flex items-center space-x-2 text-gray-400">
+                        <span>Current Branch</span>
+                        <button id="branch-button" class="flex items-center bg-[#2d333b] px-2 py-1 rounded-md">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.316 3.051a1 1 0 01.633 1.265l-4 12a1 1 0 01-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                            <span id="current-branch-name" class="text-white ml-2 font-mono">main</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <span class="text-gray-500 text-xs">Last fetched 12 minutes ago</span>
+                        <div class="flex items-center space-x-2">
+                            <button class="flex items-center space-x-2 bg-[#2d333b] px-3 py-1.5 rounded-md text-white hover:bg-gray-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M15.707 4.293a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 011.414-1.414L10 8.586l4.293-4.293a1 1 0 011.414 0zm0 6a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 111.414-1.414L10 14.586l4.293-4.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                <span>Fetch</span>
+                            </button>
+                             <button class="flex items-center space-x-2 bg-[#2d333b] px-3 py-1.5 rounded-md text-white hover:bg-gray-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transform rotate-180" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M15.707 4.293a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 011.414-1.414L10 8.586l4.293-4.293a1 1 0 011.414 0zm0 6a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-5-5a1 1 0 111.414-1.414L10 14.586l4.293-4.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                                <span>Push</span>
+                            </button>
+                             <button class="bg-[#2d333b] px-3 py-1.5 rounded-md text-white hover:bg-gray-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Changes View (Main) -->
+                <div id="changes-view-main" class="flex-1 flex flex-col context-menu-target">
+                    <!-- File Path Header -->
+                    <div class="flex-shrink-0 flex items-center justify-between p-3 bg-[#2d333b] border-b border-gray-700">
+                        <div class="text-gray-300 font-mono text-sm">
+                            packages/compass/src/config/index.ts
+                        </div>
+                    </div>
+
+                    <!-- Code View -->
+                    <div class="flex-1 overflow-auto fira-code text-sm">
+                        <table class="w-full text-left">
+                            <tbody>
+                                <tr><td class="p-1 pl-4 text-right text-gray-500 select-none w-10">16</td><td class="p-1 text-right text-gray-500 select-none w-10">16</td><td class="p-1 pr-4 text-gray-400"><span class="text-pink-400">import</span> { EnvConfig } <span class="text-pink-400">from</span> <span class="text-green-400">"./types"</span>;</td></tr>
+                                <tr><td class="p-1 pl-4 text-right text-gray-500 select-none">17</td><td class="p-1 text-right text-gray-500 select-none">17</td><td class="p-1 pr-4 text-gray-500"><span class="text-gray-500">// They will override all other values.</span></td></tr>
+                                <tr><td class="p-1 pl-4 text-right text-gray-500 select-none">18</td><td class="p-1 text-right text-gray-500 select-none">18</td><td class="p-1 pr-4 text-gray-500"><span class="text-gray-500">*/</span></td></tr>
+                                <tr class="bg-red-500/10"><td class="p-1 pl-4 text-right text-gray-500 select-none">19</td><td class="p-1 text-right text-gray-500 select-none"></td><td class="p-1 pr-4 text-red-400"><span class="text-red-400/50">-</span> <span class="text-gray-500">// Detect if we are in a Node environment (process exists)</span></td></tr>
+                                <tr class="bg-red-500/10"><td class="p-1 pl-4 text-right text-gray-500 select-none">20</td><td class="p-1 text-right text-gray-500 select-none"></td><td class="p-1 pr-4 text-red-400"><span class="text-red-400/50">-</span> <span class="text-purple-400">const</span> isNode = <span class="text-purple-400">typeof</span> process !== <span class="text-green-400">'undefined'</span> && process.env;</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- History View (Main) -->
+                <div id="history-view-main" class="hidden flex-1 flex flex-col context-menu-target">
+                     <!-- Commit Message Header -->
+                    <div class="flex-shrink-0 p-3 bg-[#2d333b] border-b border-gray-700">
+                        <p class="font-semibold text-white">fix(config): make environment config safe for client-side</p>
+                        <div class="flex items-center text-xs text-gray-400 mt-1">
+                            <img src="https://placehold.co/20x20/4A5568/E2E8F0?text=A" class="rounded-full mr-2" alt="Avatar">
+                            <span>Alex Navarro</span>
+                            <span class="mx-2">&middot;</span>
+                            <span class="font-mono">cb41be</span>
+                            <span class="ml-4 text-green-400">+18</span>
+                            <span class="ml-2 text-red-400">-9</span>
+                        </div>
+                    </div>
+                    <div id="history-diff-container" class="flex flex-1 overflow-hidden">
+                        <!-- Changed Files List -->
+                        <div id="history-file-list" class="border-r border-gray-700 overflow-y-auto p-2" style="width: 33.33%;">
+                            <p class="text-xs text-gray-400 px-2 py-1">1 changed file</p>
+                            <ul>
+                                <li class="p-2 rounded-md bg-blue-600/20 text-white">
+                                    <span class="truncate">packages/compass/src/config/index.ts</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <!-- Resizer for History Diff View -->
+                        <div id="history-resizer" class="resizer"></div>
+                        <!-- Code View for History -->
+                        <div id="history-code-view" class="flex-1 overflow-auto fira-code text-sm">
+                            <table class="w-full text-left">
+                                <tbody>
+                                    <tr><td class="p-1 pl-4 text-right text-gray-500 select-none w-10">16</td><td class="p-1 text-right text-gray-500 select-none w-10">16</td><td class="p-1 pr-4 text-gray-400"><span class="text-pink-400">import</span> { EnvConfig } <span class="text-pink-400">from</span> <span class="text-green-400">"./types"</span>;</td></tr>
+                                    <tr class="bg-red-500/10"><td class="p-1 pl-4 text-right text-gray-500 select-none">18</td><td class="p-1 text-right text-gray-500 select-none"></td><td class="p-1 pr-4 text-red-400"><span class="text-red-400/50">-</span> <span class="text-gray-500">if (process.env.TARGET_CONFIG) {</span></td></tr>
+                                    <tr class="bg-green-500/10"><td class="p-1 pl-4 text-right text-gray-500 select-none"></td><td class="p-1 text-right text-gray-500 select-none">18</td><td class="p-1 pr-4 text-green-300"><span class="text-green-400/50">+</span> <span class="text-gray-500">// Detect if we are in a Node environment (process exists)</span></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Branch Selection Overlay -->
+        <div id="branch-overlay" class="absolute inset-0 bg-black bg-opacity-50 z-10 hidden grid place-items-center">
+            <div id="branch-menu" class="bg-[#22272e] w-full max-w-2xl rounded-lg shadow-xl border border-gray-700 flex flex-col">
+                <!-- Overlay Tabs -->
+                <div class="flex-shrink-0 border-b border-gray-700">
+                    <div class="flex w-full">
+                        <button id="branches-overlay-tab" class="w-1/2 text-center text-white font-semibold py-2 border-b-2 border-blue-500">Branches</button>
+                        <button id="prs-overlay-tab" class="w-1/2 text-center text-gray-400 font-semibold py-2 border-b-2 border-gray-700">Pull Requests <span class="bg-gray-600 text-white text-xs font-bold rounded-full px-2 py-0.5 ml-1">2</span></button>
+                    </div>
+                </div>
+                <!-- Filter Input -->
+                <div class="p-4 border-b border-gray-700 flex items-center space-x-2">
+                    <input id="branch-filter-input" type="text" placeholder="Filter or create a branch" class="bg-[#2d333b] text-white text-sm border border-gray-600 rounded px-3 py-1.5 w-full flex-grow focus:outline-none focus:ring-1 focus:ring-blue-500">
+                    <button id="add-branch-button" class="bg-[#2d333b] p-1.5 rounded-md text-white hover:bg-gray-600 border border-gray-600 flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+                        </svg>
+                    </button>
+                </div>
+                <!-- Content Area -->
+                <div class="overflow-y-auto h-96">
+                    <!-- Branches List -->
+                    <div id="branches-list">
+                        <ul>
+                            <!-- Branches will be populated by JavaScript -->
+                        </ul>
+                    </div>
+                    <!-- Pull Requests List -->
+                    <div id="prs-list" class="hidden">
+                         <ul>
+                            <li class="px-4 py-2 text-gray-300 hover:bg-gray-700/50 cursor-pointer pr-item">
+                                <p class="font-semibold">feat(auth): expose user identity fields in nw:us...</p>
+                                <p class="text-xs text-gray-400">#39 opened 23 hours ago by anavarro-nw</p>
+                            </li>
+                            <li class="px-4 py-2 text-gray-300 hover:bg-gray-700/50 cursor-pointer pr-item">
+                                <p class="font-semibold">chore: Fix DD RUM client errors</p>
+                                <p class="text-xs text-gray-400">#34 opened 19 days ago by snehakhobragade90</p>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Create Branch Modal -->
+        <div id="create-branch-modal" class="absolute inset-0 bg-black bg-opacity-50 z-20 hidden grid place-items-center">
+            <div class="bg-[#2d333b] w-full max-w-md rounded-lg shadow-xl border border-gray-700 flex flex-col p-6 text-white">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">Create a Branch</h2>
+                    <button id="close-create-branch-modal" class="text-gray-400 hover:text-white">&times;</button>
+                </div>
+                <p class="text-sm mb-2">Name</p>
+                <input id="new-branch-name-input" type="text" class="bg-[#22272e] border border-gray-600 rounded px-3 py-1.5 w-full mb-4 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <p class="text-sm mb-2">Create branch based on...</p>
+                <div class="space-y-2 text-sm">
+                    <label class="flex items-start p-3 bg-[#22272e] rounded border border-gray-600">
+                        <input type="radio" name="base-branch" value="main" class="mt-1" checked>
+                        <div class="ml-3">
+                            <p>main</p>
+                            <p class="text-xs text-gray-400">The default branch in your repository. Pick this to start something new that's not dependent on your current branch.</p>
+                        </div>
+                    </label>
+                    <label class="flex items-start p-3 bg-[#22272e] rounded border border-gray-600">
+                        <input type="radio" name="base-branch" value="current" class="mt-1">
+                        <div class="ml-3">
+                            <p id="current-branch-option-label">SEO-4363</p>
+                            <p class="text-xs text-gray-400">The currently checked out branch. Pick this if you need to build on work done on this branch.</p>
+                        </div>
+                    </label>
+                </div>
+                <div class="flex justify-end space-x-2 mt-6">
+                    <button id="cancel-create-branch" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm">Cancel</button>
+                    <button id="confirm-create-branch" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm">Create Branch</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Switch Branch / Stash Modal -->
+        <div id="switch-branch-modal" class="absolute inset-0 bg-black bg-opacity-50 z-20 hidden grid place-items-center">
+            <div class="bg-[#2d333b] w-full max-w-md rounded-lg shadow-xl border border-gray-700 flex flex-col p-6 text-white">
+                 <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">Switch Branch</h2>
+                    <button id="close-switch-branch-modal" class="text-gray-400 hover:text-white">&times;</button>
+                </div>
+                <p class="text-sm mb-4">You have changes on this branch. What would you like to do with them?</p>
+                 <div class="space-y-2 text-sm">
+                    <label class="flex items-start p-3 bg-[#22272e] rounded border border-gray-600">
+                        <input type="radio" name="stash-option" value="leave" class="mt-1">
+                        <div class="ml-3">
+                            <p id="leave-changes-label">Leave my changes on SEO-4363</p>
+                            <p class="text-xs text-gray-400">Your in-progress work will be stashed on this branch for you to return to later.</p>
+                        </div>
+                    </label>
+                    <label class="flex items-start p-3 bg-[#22272e] rounded border border-gray-600">
+                        <input type="radio" name="stash-option" value="bring" class="mt-1" checked>
+                        <div class="ml-3">
+                            <p id="bring-changes-label">Bring my changes to test2</p>
+                            <p class="text-xs text-gray-400">Your in-progress work will follow you to the new branch.</p>
+                        </div>
+                    </label>
+                </div>
+                <div class="flex justify-end space-x-2 mt-6">
+                    <button id="cancel-switch-branch" class="bg-gray-600 hover:bg-gray-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm">Cancel</button>
+                    <button id="confirm-switch-branch" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-4 rounded-md text-sm">Switch Branch</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Context Menu -->
+        <div id="context-menu" class="absolute bg-[#2d333b] border border-gray-700 rounded-md shadow-lg text-white text-sm py-1 z-30 hidden">
+            <button class="block w-full text-left px-4 py-1.5 hover:bg-blue-600">Discard Changes...</button>
+            <div class="border-t border-gray-700 my-1"></div>
+            <button class="block w-full text-left px-4 py-1.5 hover:bg-blue-600">Copy File Path</button>
+            <button class="block w-full text-left px-4 py-1.5 hover:bg-blue-600">Copy Relative File Path</button>
+            <div class="border-t border-gray-700 my-1"></div>
+            <button class="block w-full text-left px-4 py-1.5 hover:bg-blue-600">Reveal in Finder</button>
+            <button class="block w-full text-left px-4 py-1.5 hover:bg-blue-600">Open in Editor</button>
+        </div>
+
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- STATE MANAGEMENT (simple version) ---
+            let state = {
+                currentBranch: 'main',
+                defaultBranch: 'main',
+                uncommittedChanges: 0,
+            };
+
+            // --- DOM ELEMENTS ---
+            const changesTab = document.getElementById('changes-tab');
+            const historyTab = document.getElementById('history-tab');
+            const changesViewSidebar = document.getElementById('changes-view-sidebar');
+            const historyViewSidebar = document.getElementById('history-view-sidebar');
+            const changesViewMain = document.getElementById('changes-view-main');
+            const historyViewMain = document.getElementById('history-view-main');
+            const branchButton = document.getElementById('branch-button');
+            const branchOverlay = document.getElementById('branch-overlay');
+            const currentBranchName = document.getElementById('current-branch-name');
+            const branchesOverlayTab = document.getElementById('branches-overlay-tab');
+            const prsOverlayTab = document.getElementById('prs-overlay-tab');
+            const branchesList = document.getElementById('branches-list');
+            const prsList = document.getElementById('prs-list');
+            const addBranchButton = document.getElementById('add-branch-button');
+            const branchFilterInput = document.getElementById('branch-filter-input');
+            const branchesUl = document.querySelector('#branches-list ul');
+            const createBranchModal = document.getElementById('create-branch-modal');
+            const switchBranchModal = document.getElementById('switch-branch-modal');
+            const changesCount = document.getElementById('changes-count');
+            const changedFilesList = document.getElementById('changed-files-list');
+            const contextMenu = document.getElementById('context-menu');
+
+
+            // --- MODAL ELEMENTS ---
+            const closeCreateBranchModal = document.getElementById('close-create-branch-modal');
+            const cancelCreateBranch = document.getElementById('cancel-create-branch');
+            const confirmCreateBranch = document.getElementById('confirm-create-branch');
+            const newBranchNameInput = document.getElementById('new-branch-name-input');
+            const currentBranchOptionLabel = document.getElementById('current-branch-option-label');
+
+            const closeSwitchBranchModal = document.getElementById('close-switch-branch-modal');
+            const cancelSwitchBranch = document.getElementById('cancel-switch-branch');
+            const confirmSwitchBranch = document.getElementById('confirm-switch-branch');
+            const leaveChangesLabel = document.getElementById('leave-changes-label');
+            const bringChangesLabel = document.getElementById('bring-changes-label');
+            
+            let newBranchName = ''; // To store the new branch name across modals
+
+            // --- FUNCTIONS ---
+            const updateUI = () => {
+                currentBranchName.textContent = state.currentBranch;
+                changesCount.textContent = state.uncommittedChanges;
+                if (state.uncommittedChanges === 0) {
+                    changedFilesList.innerHTML = '<p class="p-4 text-gray-400">No local changes</p>';
+                }
+            };
+
+            const showModal = (modal) => modal.classList.remove('hidden');
+            const hideModal = (modal) => modal.classList.add('hidden');
+
+            const handleBranchCreation = () => {
+                newBranchName = branchFilterInput.value.trim();
+                if (!newBranchName) return;
+
+                hideModal(branchOverlay);
+
+                if (state.currentBranch !== state.defaultBranch) {
+                    newBranchNameInput.value = newBranchName;
+                    currentBranchOptionLabel.textContent = state.currentBranch;
+                    showModal(createBranchModal);
+                } else {
+                    checkForUncommittedChanges();
+                }
+            };
+
+            const checkForUncommittedChanges = () => {
+                if (state.uncommittedChanges > 0) {
+                    leaveChangesLabel.textContent = `Leave my changes on ${state.currentBranch}`;
+                    bringChangesLabel.textContent = `Bring my changes to ${newBranchName}`;
+                    showModal(switchBranchModal);
+                } else {
+                    finalizeBranchSwitch();
+                }
+            };
+
+            const finalizeBranchSwitch = (bringChanges = false) => {
+                const newLi = document.createElement('li');
+                newLi.textContent = newBranchName;
+                newLi.className = 'px-4 py-2 text-gray-300 hover:bg-gray-700/50 cursor-pointer branch-item';
+                addBranchItemListener(newLi);
+                branchesUl.prepend(newLi);
+                
+                state.currentBranch = newBranchName;
+                
+                if (!bringChanges) {
+                    state.uncommittedChanges = 0;
+                }
+
+                branchFilterInput.value = '';
+                updateUI();
+                hideModal(switchBranchModal);
+            };
+
+
+            // --- EVENT LISTENERS ---
+            addBranchButton.addEventListener('click', handleBranchCreation);
+
+            // Create Branch Modal Listeners
+            confirmCreateBranch.addEventListener('click', () => {
+                hideModal(createBranchModal);
+                checkForUncommittedChanges();
+            });
+            cancelCreateBranch.addEventListener('click', () => hideModal(createBranchModal));
+            closeCreateBranchModal.addEventListener('click', () => hideModal(createBranchModal));
+
+            // Switch Branch Modal Listeners
+            confirmSwitchBranch.addEventListener('click', () => {
+                const bringChanges = document.querySelector('input[name="stash-option"]:checked').value === 'bring';
+                finalizeBranchSwitch(bringChanges);
+            });
+            cancelSwitchBranch.addEventListener('click', () => hideModal(switchBranchModal));
+            closeSwitchBranchModal.addEventListener('click', () => hideModal(switchBranchModal));
+
+
+            // --- EXISTING LOGIC ---
+            historyTab.addEventListener('click', () => {
+                historyTab.classList.add('border-blue-500', 'bg-[#2d333b]');
+                historyTab.classList.remove('border-gray-700');
+                changesTab.classList.remove('border-blue-500', 'bg-[#2d333b]');
+                changesTab.classList.add('border-gray-700');
+                historyViewSidebar.classList.remove('hidden');
+                changesViewSidebar.classList.add('hidden');
+                historyViewMain.classList.remove('hidden');
+                changesViewMain.classList.add('hidden');
+            });
+
+            changesTab.addEventListener('click', () => {
+                changesTab.classList.add('border-blue-500', 'bg-[#2d333b]');
+                changesTab.classList.remove('border-gray-700');
+                historyTab.classList.remove('border-blue-500', 'bg-[#2d333b]');
+                historyTab.classList.add('border-gray-700');
+                changesViewSidebar.classList.remove('hidden');
+                historyViewSidebar.classList.add('hidden');
+                changesViewMain.classList.remove('hidden');
+                historyViewMain.classList.add('hidden');
+            });
+
+            const makeResizable = (leftPanel, resizer) => {
+                let x = 0;
+                let leftWidth = 0;
+
+                const mouseDownHandler = (e) => {
+                    x = e.clientX;
+                    leftWidth = leftPanel.getBoundingClientRect().width;
+
+                    document.addEventListener('mousemove', mouseMoveHandler);
+                    document.addEventListener('mouseup', mouseUpHandler);
+                    document.body.classList.add('is-resizing');
+                };
+
+                const mouseMoveHandler = (e) => {
+                    const dx = e.clientX - x;
+                    const newLeftWidth = leftWidth + dx;
+                    const containerWidth = leftPanel.parentElement.getBoundingClientRect().width;
+                    
+                    const minWidth = 150;
+                    const maxLeftWidth = containerWidth - minWidth;
+
+                    if (newLeftWidth > minWidth && newLeftWidth < maxLeftWidth) {
+                        leftPanel.style.width = `${newLeftWidth}px`;
+                    }
+                };
+
+                const mouseUpHandler = () => {
+                    document.removeEventListener('mousemove', mouseMoveHandler);
+                    document.removeEventListener('mouseup', mouseUpHandler);
+                    document.body.classList.remove('is-resizing');
+                };
+
+                resizer.addEventListener('mousedown', mouseDownHandler);
+            };
+
+            makeResizable(document.getElementById('sidebar'), document.getElementById('main-resizer'));
+            makeResizable(document.getElementById('history-file-list'), document.getElementById('history-resizer'));
+
+            branchButton.addEventListener('click', () => {
+                showModal(branchOverlay);
+            });
+
+            branchOverlay.addEventListener('click', (e) => {
+                if (e.target === branchOverlay) {
+                    hideModal(branchOverlay);
+                }
+            });
+
+            branchesOverlayTab.addEventListener('click', () => {
+                branchesOverlayTab.classList.add('border-blue-500');
+                branchesOverlayTab.classList.remove('border-gray-700');
+                prsOverlayTab.classList.remove('border-blue-500');
+                prsOverlayTab.classList.add('border-gray-700');
+                branchesList.classList.remove('hidden');
+                prsList.classList.add('hidden');
+            });
+
+            prsOverlayTab.addEventListener('click', () => {
+                prsOverlayTab.classList.add('border-blue-500');
+                prsOverlayTab.classList.remove('border-gray-700');
+                branchesOverlayTab.classList.remove('border-blue-500');
+                branchesOverlayTab.classList.add('border-gray-700');
+                prsList.classList.remove('hidden');
+                branchesList.classList.add('hidden');
+            });
+            
+            const addBranchItemListener = (item) => {
+                 item.addEventListener('click', (e) => {
+                    newBranchName = e.target.textContent;
+                    hideModal(branchOverlay);
+                    checkForUncommittedChanges();
+                 });
+            }
+
+            document.querySelectorAll('.branch-item').forEach(addBranchItemListener);
+            
+            document.querySelectorAll('.pr-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    newBranchName = "pr-branch-name";
+                    hideModal(branchOverlay);
+                    checkForUncommittedChanges();
+                });
+            });
+            
+            // --- CONTEXT MENU LOGIC ---
+            document.addEventListener('contextmenu', (e) => {
+                // Check if the right-clicked element or its parent has the target class
+                if (e.target.closest('.context-menu-target')) {
+                    e.preventDefault();
+                    
+                    const { clientX: mouseX, clientY: mouseY } = e;
+                    contextMenu.style.top = `${mouseY}px`;
+                    contextMenu.style.left = `${mouseX}px`;
+                    
+                    contextMenu.classList.remove('hidden');
+                }
+            });
+
+            // Close context menu on left click
+            document.addEventListener('click', (e) => {
+                if (!contextMenu.contains(e.target)) {
+                    contextMenu.classList.add('hidden');
+                }
+            });
+
+             // Close context menu with Escape key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    contextMenu.classList.add('hidden');
+                }
+            });
+
+
+            // Initial UI setup
+            updateUI();
+        });
+    </script>
+
+</body>
+</html>
